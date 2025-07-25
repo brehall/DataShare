@@ -7,6 +7,7 @@ import { AnalyticsCards } from "@/components/analytics-cards";
 import { CustomerTable } from "@/components/customer-table";
 import { TeamActivityFeed } from "@/components/team-activity";
 import { CustomerModal } from "@/components/customer-modal";
+import { UserMenu } from "@/components/user-menu";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { Customer } from "@shared/schema";
 
@@ -54,21 +55,13 @@ export default function Dashboard() {
         <header className="bg-white border-b border-slate-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h2 className="text-xl font-semibold text-slate-900">Customer Dashboard</h2>
-              <div className="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded">
-                {isConnected ? (
-                  <span className="flex items-center">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
-                    Live updates active
-                  </span>
-                ) : (
-                  <span className="flex items-center">
-                    <span className="w-2 h-2 bg-slate-400 rounded-full mr-2"></span>
-                    Connecting...
-                  </span>
-                )}
+              <h1 className="text-xl font-semibold text-slate-900">Customer Management</h1>
+              <div className="flex items-center space-x-2 text-sm text-slate-500">
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               </div>
             </div>
+            <UserMenu />
             <div className="flex items-center space-x-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />

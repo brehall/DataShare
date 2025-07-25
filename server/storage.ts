@@ -1,4 +1,22 @@
-import { type Customer, type InsertCustomer, type CustomerNote, type InsertCustomerNote, type TeamActivity, type InsertTeamActivity } from "@shared/schema";
+import { 
+  type Customer, 
+  type InsertCustomer, 
+  type CustomerNote, 
+  type InsertCustomerNote, 
+  type TeamActivity, 
+  type InsertTeamActivity,
+  type User,
+  type InsertUser,
+  type Invitation,
+  type InsertInvitation,
+  customers,
+  customerNotes,
+  teamActivity,
+  users,
+  invitations
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -17,6 +35,15 @@ export interface IStorage {
   getTeamActivity(limit?: number): Promise<TeamActivity[]>;
   createTeamActivity(activity: InsertTeamActivity): Promise<TeamActivity>;
   
+  // User operations
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  
+  // Invitation operations
+  getInvitations(): Promise<Invitation[]>;
+  createInvitation(invitation: InsertInvitation): Promise<Invitation>;
+  
   // Analytics
   getCustomerAnalytics(): Promise<{
     totalCustomers: number;
@@ -26,169 +53,151 @@ export interface IStorage {
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private customers: Map<string, Customer>;
-  private customerNotes: Map<string, CustomerNote>;
-  private teamActivity: Map<string, TeamActivity>;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.customers = new Map();
-    this.customerNotes = new Map();
-    this.teamActivity = new Map();
     this.initializeSampleData();
   }
 
   private async initializeSampleData() {
-    // Add some sample customers
-    const sampleCustomers = [
-      {
-        id: "cust-1",
-        firstName: "Sarah",
-        lastName: "Johnson",
-        email: "sarah.johnson@techcorp.com",
-        phone: "+1-555-0123",
-        company: "TechCorp Solutions",
-        role: "CTO",
-        status: "active",
-        region: "north-america",
-        lastContact: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        lastContactBy: "Alex Chen",
-        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-        updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: "cust-2",
-        firstName: "Marcus",
-        lastName: "Rodriguez",
-        email: "m.rodriguez@globalfinance.com",
-        phone: "+1-555-0234",
-        company: "Global Finance Inc",
-        role: "VP Engineering",
-        status: "prospect",
-        region: "north-america",
-        lastContact: null,
-        lastContactBy: null,
-        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // 15 days ago
-        updatedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: "cust-3",
-        firstName: "Emma",
-        lastName: "Thompson",
-        email: "emma.thompson@eurotech.eu",
-        phone: "+44-20-7946-0958",
-        company: "EuroTech Limited",
-        role: "Head of Operations",
-        status: "active",
-        region: "europe",
-        lastContact: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
-        lastContactBy: "Sarah Chen",
-        createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), // 60 days ago
-        updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: "cust-4",
-        firstName: "Chen",
-        lastName: "Wei",
-        email: "chen.wei@asiapacific.com",
-        phone: "+86-138-0013-8000",
-        company: "Asia Pacific Ventures",
-        role: "Director",
-        status: "inactive",
-        region: "asia-pacific",
-        lastContact: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000), // 45 days ago
-        lastContactBy: "Marcus Brown",
-        createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // 90 days ago
-        updatedAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000),
-      },
-    ];
+    try {
+      // Check if data already exists
+      const existingCustomers = await db.select().from(customers).limit(1);
+      if (existingCustomers.length > 0) {
+        return; // Data already initialized
+      }
 
-    // Add sample customers to storage
-    sampleCustomers.forEach(customer => {
-      this.customers.set(customer.id, customer as Customer);
-    });
+      // Add sample customers
+      const sampleCustomers = [
+        {
+          firstName: "Sarah",
+          lastName: "Johnson",
+          email: "sarah.johnson@techcorp.com",
+          phone: "+1-555-0123",
+          company: "TechCorp Solutions",
+          role: "CTO",
+          status: "active",
+          region: "north-america",
+          lastContact: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          lastContactBy: "Alex Chen",
+        },
+        {
+          firstName: "Marcus",
+          lastName: "Rodriguez",
+          email: "m.rodriguez@globalfinance.com",
+          phone: "+1-555-0234",
+          company: "Global Finance Inc",
+          role: "VP Engineering",
+          status: "prospect",
+          region: "north-america",
+          lastContact: null,
+          lastContactBy: null,
+        },
+        {
+          firstName: "Emma",
+          lastName: "Thompson",
+          email: "emma.thompson@eurotech.eu",
+          phone: "+44-20-7946-0958",
+          company: "EuroTech Limited",
+          role: "Head of Operations",
+          status: "active",
+          region: "europe",
+          lastContact: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+          lastContactBy: "Sarah Chen",
+        },
+        {
+          firstName: "Chen",
+          lastName: "Wei",
+          email: "chen.wei@asiapacific.com",
+          phone: "+86-138-0013-8000",
+          company: "Asia Pacific Ventures",
+          role: "Director",
+          status: "inactive",
+          region: "asia-pacific",
+          lastContact: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000),
+          lastContactBy: "Marcus Brown",
+        },
+      ];
 
-    // Add sample notes
-    const sampleNotes = [
-      {
-        id: "note-1",
-        customerId: "cust-1",
-        content: "Had a great call discussing their Q2 expansion plans. They're interested in scaling their infrastructure.",
-        authorName: "Alex Chen",
-        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: "note-2",
-        customerId: "cust-1",
-        content: "Follow-up meeting scheduled for next week to present our enterprise package.",
-        authorName: "Sarah Chen",
-        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-      },
-      {
-        id: "note-3",
-        customerId: "cust-3",
-        content: "Emma mentioned they're evaluating multiple vendors. Need to highlight our European data center advantages.",
-        authorName: "Marcus Brown",
-        createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-      },
-    ];
+      const insertedCustomers = await db.insert(customers).values(sampleCustomers).returning();
 
-    sampleNotes.forEach(note => {
-      this.customerNotes.set(note.id, note as CustomerNote);
-    });
+      // Add sample notes
+      if (insertedCustomers.length > 0) {
+        const sampleNotes = [
+          {
+            customerId: insertedCustomers[0].id,
+            content: "Had a great call discussing their Q2 expansion plans. They're interested in scaling their infrastructure.",
+            authorName: "Alex Chen",
+          },
+          {
+            customerId: insertedCustomers[0].id,
+            content: "Follow-up meeting scheduled for next week to present our enterprise package.",
+            authorName: "Sarah Chen",
+          },
+          {
+            customerId: insertedCustomers[2].id,
+            content: "Emma mentioned they're evaluating multiple vendors. Need to highlight our European data center advantages.",
+            authorName: "Marcus Brown",
+          },
+        ];
 
-    // Add sample team activities
-    const sampleActivities = [
-      {
-        id: "act-1",
-        action: "updated customer",
-        userName: "Sarah Chen",
-        customerName: "Sarah Johnson",
-        customerId: "cust-1",
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-      {
-        id: "act-2",
-        action: "added a note to",
-        userName: "Alex Chen",
-        customerName: "Sarah Johnson",
-        customerId: "cust-1",
-        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
-      },
-      {
-        id: "act-3",
-        action: "created customer",
-        userName: "Marcus Brown",
-        customerName: "Marcus Rodriguez",
-        customerId: "cust-2",
-        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-      },
-      {
-        id: "act-4",
-        action: "exported customer data",
-        userName: "Sarah Chen",
-        customerName: null,
-        customerId: null,
-        createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
-      },
-    ];
+        await db.insert(customerNotes).values(sampleNotes);
 
-    sampleActivities.forEach(activity => {
-      this.teamActivity.set(activity.id, activity as TeamActivity);
-    });
+        // Add sample team activities
+        const sampleActivities = [
+          {
+            action: "updated customer",
+            userName: "Sarah Chen",
+            customerName: "Sarah Johnson",
+            customerId: insertedCustomers[0].id,
+          },
+          {
+            action: "added a note to",
+            userName: "Alex Chen",
+            customerName: "Sarah Johnson",
+            customerId: insertedCustomers[0].id,
+          },
+          {
+            action: "created customer",
+            userName: "Marcus Brown",
+            customerName: "Marcus Rodriguez",
+            customerId: insertedCustomers[1].id,
+          },
+          {
+            action: "exported customer data",
+            userName: "Sarah Chen",
+            customerName: null,
+            customerId: null,
+          },
+        ];
+
+        await db.insert(teamActivity).values(sampleActivities);
+      }
+    } catch (error) {
+      console.error('Error initializing sample data:', error);
+    }
   }
 
   async getCustomers(filters?: { status?: string; region?: string; search?: string }): Promise<Customer[]> {
-    let results = Array.from(this.customers.values());
+    let query = db.select().from(customers);
+    
+    // Apply filters using SQL
+    const conditions = [];
     
     if (filters?.status && filters.status !== 'all') {
-      results = results.filter(c => c.status === filters.status);
+      conditions.push(eq(customers.status, filters.status));
     }
     
     if (filters?.region && filters.region !== 'all') {
-      results = results.filter(c => c.region === filters.region);
+      conditions.push(eq(customers.region, filters.region));
     }
     
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    let results = await query.orderBy(desc(customers.updatedAt));
+    
+    // Apply search filter in application (could be optimized with full-text search)
     if (filters?.search && filters.search.trim()) {
       const search = filters.search.toLowerCase();
       results = results.filter(c => 
@@ -199,28 +208,16 @@ export class MemStorage implements IStorage {
       );
     }
     
-    return results.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+    return results;
   }
 
   async getCustomer(id: string): Promise<Customer | undefined> {
-    return this.customers.get(id);
+    const [customer] = await db.select().from(customers).where(eq(customers.id, id));
+    return customer;
   }
 
   async createCustomer(insertCustomer: InsertCustomer): Promise<Customer> {
-    const id = randomUUID();
-    const now = new Date();
-    const customer: Customer = {
-      ...insertCustomer,
-      id,
-      createdAt: now,
-      updatedAt: now,
-      role: insertCustomer.role || null,
-      phone: insertCustomer.phone || null,
-      lastContact: insertCustomer.lastContact || null,
-      lastContactBy: insertCustomer.lastContactBy || null,
-      status: insertCustomer.status || 'prospect',
-    };
-    this.customers.set(id, customer);
+    const [customer] = await db.insert(customers).values(insertCustomer).returning();
     
     // Create team activity
     await this.createTeamActivity({
@@ -234,15 +231,13 @@ export class MemStorage implements IStorage {
   }
 
   async updateCustomer(id: string, updates: Partial<InsertCustomer>): Promise<Customer | undefined> {
-    const existing = this.customers.get(id);
-    if (!existing) return undefined;
+    const [updated] = await db
+      .update(customers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(customers.id, id))
+      .returning();
     
-    const updated: Customer = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date(),
-    };
-    this.customers.set(id, updated);
+    if (!updated) return undefined;
     
     // Create team activity
     await this.createTeamActivity({
@@ -256,17 +251,14 @@ export class MemStorage implements IStorage {
   }
 
   async deleteCustomer(id: string): Promise<boolean> {
-    const customer = this.customers.get(id);
+    const customer = await this.getCustomer(id);
     if (!customer) return false;
     
-    this.customers.delete(id);
+    // Remove associated notes first
+    await db.delete(customerNotes).where(eq(customerNotes.customerId, id));
     
-    // Remove associated notes
-    Array.from(this.customerNotes.entries()).forEach(([noteId, note]) => {
-      if (note.customerId === id) {
-        this.customerNotes.delete(noteId);
-      }
-    });
+    // Remove customer
+    await db.delete(customers).where(eq(customers.id, id));
     
     // Create team activity
     await this.createTeamActivity({
@@ -279,19 +271,15 @@ export class MemStorage implements IStorage {
   }
 
   async getCustomerNotes(customerId: string): Promise<CustomerNote[]> {
-    return Array.from(this.customerNotes.values())
-      .filter(note => note.customerId === customerId)
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return await db
+      .select()
+      .from(customerNotes)
+      .where(eq(customerNotes.customerId, customerId))
+      .orderBy(desc(customerNotes.createdAt));
   }
 
   async createCustomerNote(insertNote: InsertCustomerNote): Promise<CustomerNote> {
-    const id = randomUUID();
-    const note: CustomerNote = {
-      ...insertNote,
-      id,
-      createdAt: new Date(),
-    };
-    this.customerNotes.set(id, note);
+    const [note] = await db.insert(customerNotes).values(insertNote).returning();
     
     // Create team activity
     const customer = await this.getCustomer(note.customerId);
@@ -306,21 +294,15 @@ export class MemStorage implements IStorage {
   }
 
   async getTeamActivity(limit = 10): Promise<TeamActivity[]> {
-    return Array.from(this.teamActivity.values())
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-      .slice(0, limit);
+    return await db
+      .select()
+      .from(teamActivity)
+      .orderBy(desc(teamActivity.createdAt))
+      .limit(limit);
   }
 
   async createTeamActivity(insertActivity: InsertTeamActivity): Promise<TeamActivity> {
-    const id = randomUUID();
-    const activity: TeamActivity = {
-      ...insertActivity,
-      id,
-      createdAt: new Date(),
-      customerId: insertActivity.customerId || null,
-      customerName: insertActivity.customerName || null,
-    };
-    this.teamActivity.set(id, activity);
+    const [activity] = await db.insert(teamActivity).values(insertActivity).returning();
     return activity;
   }
 
@@ -330,16 +312,43 @@ export class MemStorage implements IStorage {
     totalNotes: number;
     recentExports: number;
   }> {
-    const customers = Array.from(this.customers.values());
-    const notes = Array.from(this.customerNotes.values());
+    const [totalCustomers] = await db.select({ count: sql`count(*)` }).from(customers);
+    const [activeCustomers] = await db.select({ count: sql`count(*)` }).from(customers).where(eq(customers.status, 'active'));
+    const [totalNotes] = await db.select({ count: sql`count(*)` }).from(customerNotes);
     
     return {
-      totalCustomers: customers.length,
-      activeCustomers: customers.filter(c => c.status === 'active').length,
-      totalNotes: notes.length,
+      totalCustomers: Number(totalCustomers.count),
+      activeCustomers: Number(activeCustomers.count),
+      totalNotes: Number(totalNotes.count),
       recentExports: 12, // Mock value for exports
     };
   }
+
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  // Invitation operations
+  async getInvitations(): Promise<Invitation[]> {
+    return await db.select().from(invitations).orderBy(desc(invitations.createdAt));
+  }
+
+  async createInvitation(insertInvitation: InsertInvitation): Promise<Invitation> {
+    const [invitation] = await db.insert(invitations).values(insertInvitation).returning();
+    return invitation;
+  }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

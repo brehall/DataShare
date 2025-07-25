@@ -2,11 +2,15 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertCustomerNoteSchema } from "@shared/schema";
+import { insertCustomerSchema, insertCustomerNoteSchema, insertInvitationSchema } from "@shared/schema";
 import { z } from "zod";
+import { setupAuth, requireAuth } from "./auth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+
+  // Setup authentication
+  setupAuth(app);
 
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -30,8 +34,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // Customer routes
-  app.get("/api/customers", async (req, res) => {
+  // Customer routes (protected)
+  app.get("/api/customers", requireAuth, async (req, res) => {
     try {
       const filters = {
         status: req.query.status === 'all' ? undefined : req.query.status as string,
@@ -46,7 +50,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/customers/:id", async (req, res) => {
+  app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const customer = await storage.getCustomer(req.params.id);
       if (!customer) {
@@ -58,7 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/customers", async (req, res) => {
+  app.post("/api/customers", requireAuth, async (req, res) => {
     try {
       const validatedData = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(validatedData);
@@ -75,7 +79,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/customers/:id", async (req, res) => {
+  app.put("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const validatedData = insertCustomerSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, validatedData);
@@ -96,7 +100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/customers/:id", async (req, res) => {
+  app.delete("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const success = await storage.deleteCustomer(req.params.id);
       if (!success) {
@@ -113,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Customer notes routes
-  app.get("/api/customers/:id/notes", async (req, res) => {
+  app.get("/api/customers/:id/notes", requireAuth, async (req, res) => {
     try {
       const notes = await storage.getCustomerNotes(req.params.id);
       res.json(notes);
@@ -122,7 +126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/customers/:id/notes", async (req, res) => {
+  app.post("/api/customers/:id/notes", requireAuth, async (req, res) => {
     try {
       const validatedData = insertCustomerNoteSchema.parse({
         ...req.body,
@@ -144,7 +148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Team activity routes
-  app.get("/api/team-activity", async (req, res) => {
+  app.get("/api/team-activity", requireAuth, async (req, res) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
       const activities = await storage.getTeamActivity(limit);
@@ -155,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics routes
-  app.get("/api/analytics", async (req, res) => {
+  app.get("/api/analytics", requireAuth, async (req, res) => {
     try {
       const analytics = await storage.getCustomerAnalytics();
       res.json(analytics);
@@ -164,8 +168,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Invitation management routes (admin only for now)
+  app.get("/api/invitations", requireAuth, async (req, res) => {
+    try {
+      const invitations = await storage.getInvitations();
+      res.json(invitations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  app.post("/api/invitations", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const validatedData = insertInvitationSchema.parse({
+        ...req.body,
+        invitedBy: user.id,
+      });
+      
+      const invitation = await storage.createInvitation(validatedData);
+      res.status(201).json(invitation);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid invitation data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create invitation" });
+    }
+  });
+
   // Export data route
-  app.get("/api/export", async (req, res) => {
+  app.get("/api/export", requireAuth, async (req, res) => {
     try {
       const customers = await storage.getCustomers();
       
