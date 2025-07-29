@@ -16,6 +16,10 @@
   ],
   "routes": [
     {
+      "src": "/auth/(.*)",
+      "dest": "/server/index.ts"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/server/index.ts"
     },
