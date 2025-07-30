@@ -40,10 +40,17 @@ async function initializeServer() {
   }
 
   serverInitialized = true;
+  return server;
 }
 
-// Initialize server
-initializeServer();
+// For Vercel serverless functions, we need to initialize synchronously
+if (process.env.VERCEL || app.get("env") !== "development") {
+  // Initialize server immediately for production/Vercel
+  initializeServer().catch(console.error);
+} else {
+  // Initialize server for development
+  initializeServer();
+}
 
 // Export the Express app for Vercel
 export default app;
