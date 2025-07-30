@@ -5,7 +5,17 @@
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/**"]
+        "includeFiles": ["server/**", "../shared/schema/**"],
+        "excludeFiles": [
+          "dist/public/**",
+          "server/**/*.test.ts",
+          "server/**/*.spec.ts",
+          "**/*.map",
+          "node_modules/**/react/**",
+          "node_modules/**/@radix-ui/**",
+          "node_modules/**/framer-motion/**",
+          "node_modules/**/vite/**"
+        ]
       }
     },
     {
