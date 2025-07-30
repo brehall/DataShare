@@ -5,7 +5,7 @@
       "src": "package.json",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/**", "dist/**"]
+        "includeFiles": ["server/**", "dist/**", "node_modules/**"]
       }
     },
     {
