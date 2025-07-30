@@ -1,38 +1,12 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
-import { WebSocketServer, WebSocket } from "ws";
+import { setupAuth, requireAuth } from "./auth";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertCustomerNoteSchema, insertInvitationSchema } from "@shared/schema";
 import { z } from "zod";
-import { setupAuth, requireAuth } from "./auth";
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  const httpServer = createServer(app);
-
+export async function registerRoutes(app: Express): Promise<void> {
   // Setup authentication
   setupAuth(app);
-
-  // WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  
-  const clients = new Set<WebSocket>();
-  
-  wss.on('connection', (ws) => {
-    clients.add(ws);
-    
-    ws.on('close', () => {
-      clients.delete(ws);
-    });
-  });
-
-  function broadcast(message: any) {
-    const data = JSON.stringify(message);
-    clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    });
-  }
 
   // Customer routes (protected)
   app.get("/api/customers", requireAuth, async (req, res) => {
@@ -42,7 +16,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         region: req.query.region === 'all' ? undefined : req.query.region as string,
         search: req.query.search as string,
       };
-      
       const customers = await storage.getCustomers(filters);
       res.json(customers);
     } catch (error) {
@@ -53,9 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const customer = await storage.getCustomer(req.params.id);
-      if (!customer) {
-        return res.status(404).json({ message: "Customer not found" });
-      }
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
       res.json(customer);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch customer" });
@@ -66,10 +37,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(validatedData);
-      
-      // Broadcast real-time update
-      broadcast({ type: 'customer_created', data: customer });
-      
       res.status(201).json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -83,14 +50,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertCustomerSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, validatedData);
-      
-      if (!customer) {
-        return res.status(404).json({ message: "Customer not found" });
-      }
-      
-      // Broadcast real-time update
-      broadcast({ type: 'customer_updated', data: customer });
-      
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
       res.json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -103,13 +63,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const success = await storage.deleteCustomer(req.params.id);
-      if (!success) {
-        return res.status(404).json({ message: "Customer not found" });
-      }
-      
-      // Broadcast real-time update
-      broadcast({ type: 'customer_deleted', data: { id: req.params.id } });
-      
+      if (!success) return res.status(404).json({ message: "Customer not found" });
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete customer" });
@@ -132,12 +86,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         customerId: req.params.id,
       });
-      
       const note = await storage.createCustomerNote(validatedData);
-      
-      // Broadcast real-time update
-      broadcast({ type: 'note_created', data: note });
-      
       res.status(201).json(note);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -168,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Invitation management routes (admin only for now)
+  // Invitation management routes
   app.get("/api/invitations", requireAuth, async (req, res) => {
     try {
       const invitations = await storage.getInvitations();
@@ -185,7 +134,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         invitedBy: user.id,
       });
-      
       const invitation = await storage.createInvitation(validatedData);
       res.status(201).json(invitation);
     } catch (error) {
@@ -200,28 +148,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/export", requireAuth, async (req, res) => {
     try {
       const customers = await storage.getCustomers();
-      
-      // Create team activity for export
       await storage.createTeamActivity({
         action: 'exported customer data',
-        userName: 'System', // In a real app, this would come from auth
+        userName: 'System',
       });
-      
-      // Set headers for CSV download
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename=customers.csv');
-      
-      // Generate CSV
       const headers = 'First Name,Last Name,Email,Phone,Company,Role,Status,Region,Last Contact';
       const rows = customers.map(c => 
         `"${c.firstName}","${c.lastName}","${c.email}","${c.phone || ''}","${c.company}","${c.role || ''}","${c.status}","${c.region}","${c.lastContact || ''}"`
       );
-      
       res.send([headers, ...rows].join('\n'));
     } catch (error) {
       res.status(500).json({ message: "Failed to export data" });
     }
   });
-
-  return httpServer;
 }
