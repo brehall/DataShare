@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { setupAuth, requireAuth } from "./auth";
-import { storage } from "./storage";
+import { storage, IStorage } from "./storage"; // Import storage and IStorage
 import { insertCustomerSchema, insertCustomerNoteSchema, insertInvitationSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -16,6 +16,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         region: req.query.region === 'all' ? undefined : req.query.region as string,
         search: req.query.search as string,
       };
+
       const customers = await storage.getCustomers(filters);
       res.json(customers);
     } catch (error) {
@@ -26,7 +27,9 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const customer = await storage.getCustomer(req.params.id);
-      if (!customer) return res.status(404).json({ message: "Customer not found" });
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
       res.json(customer);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch customer" });
@@ -37,6 +40,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const validatedData = insertCustomerSchema.parse(req.body);
       const customer = await storage.createCustomer(validatedData);
+
       res.status(201).json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -50,7 +54,11 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const validatedData = insertCustomerSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, validatedData);
-      if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+
       res.json(customer);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -63,7 +71,10 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.delete("/api/customers/:id", requireAuth, async (req, res) => {
     try {
       const success = await storage.deleteCustomer(req.params.id);
-      if (!success) return res.status(404).json({ message: "Customer not found" });
+      if (!success) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete customer" });
@@ -86,7 +97,9 @@ export async function registerRoutes(app: Express): Promise<void> {
         ...req.body,
         customerId: req.params.id,
       });
+
       const note = await storage.createCustomerNote(validatedData);
+
       res.status(201).json(note);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -134,6 +147,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         ...req.body,
         invitedBy: user.id,
       });
+
       const invitation = await storage.createInvitation(validatedData);
       res.status(201).json(invitation);
     } catch (error) {
@@ -148,16 +162,20 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/export", requireAuth, async (req, res) => {
     try {
       const customers = await storage.getCustomers();
+
       await storage.createTeamActivity({
         action: 'exported customer data',
         userName: 'System',
       });
+
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename=customers.csv');
+
       const headers = 'First Name,Last Name,Email,Phone,Company,Role,Status,Region,Last Contact';
       const rows = customers.map(c => 
         `"${c.firstName}","${c.lastName}","${c.email}","${c.phone || ''}","${c.company}","${c.role || ''}","${c.status}","${c.region}","${c.lastContact || ''}"`
       );
+
       res.send([headers, ...rows].join('\n'));
     } catch (error) {
       res.status(500).json({ message: "Failed to export data" });
