@@ -23,13 +23,6 @@
       "dest": "/dist/public/index.html"
     }
   ],
-  "functions": {
-    "server/index.js": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "nodejs18.x"
-    }
-  },
   "installCommand": "rm -rf node_modules && npm cache clean --force && npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
