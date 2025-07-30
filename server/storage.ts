@@ -195,7 +195,7 @@ export class DatabaseStorage implements IStorage {
       query = query.where(and(...conditions));
     }
 
-    const results = await query.orderBy(desc(customers.updatedAt));
+    const results = await (query as any).orderBy(desc(customers.updatedAt)); // Type assertion to bypass TS2740
     return results;
   }
 
