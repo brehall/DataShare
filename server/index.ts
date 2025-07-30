@@ -13,44 +13,21 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   res.status(status).json({ message });
 });
 
-let serverInitialized = false;
-
 async function initializeServer() {
-  if (serverInitialized) return;
-
   const server = await registerRoutes(app);
 
-  // In production (Vercel), serve static files
-  if (app.get("env") !== "development") {
+  // Serve static files in production (Vercel)
+  if (process.env.NODE_ENV !== "development") {
     serveStatic(app);
   }
 
-  // For development only
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-
-    const port = parseInt(process.env.PORT || '5000', 10);
-    server.listen({
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    }, () => {
-      log(`serving on port ${port}`);
-    });
-  }
-
-  serverInitialized = true;
   return server;
 }
 
-// For Vercel serverless functions, we need to initialize synchronously
-if (process.env.VERCEL || app.get("env") !== "development") {
-  // Initialize server immediately for production/Vercel
-  initializeServer().catch(console.error);
-} else {
-  // Initialize server for development
-  initializeServer();
-}
+// Initialize the server synchronously for Vercel
+initializeServer().catch((err) => {
+  console.error("Server initialization failed:", err);
+});
 
 // Export the Express app for Vercel
 export default app;
