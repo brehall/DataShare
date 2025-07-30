@@ -1,37 +1,37 @@
-
 {
   "version": 2,
   "builds": [
     {
       "src": "package.json",
-      "use": "@vercel/node"
-    }
-    ],
-    "installCommand": "rm -rf node_modules && npm cache clean --force && npm install"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["server/**", "dist/**"]
+      }
     },
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist/public"
-      }
+      "src": "dist/public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/auth/(.*)",
-      "dest": "/server/index.ts"
-    },
-    {
       "src": "/api/(.*)",
-      "dest": "/server/index.ts"
+      "dest": "/server/index.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/dist/public/$1"
+      "dest": "/dist/public/index.html"
     }
   ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "functions": {
+    "server/index.js": {
+      "memory": 1024,
+      "maxDuration": 60,
+      "runtime": "nodejs18.x"
+    }
+  },
+  "installCommand": "rm -rf node_modules && npm cache clean --force && npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {}
 }
