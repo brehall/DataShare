@@ -16,7 +16,7 @@ import {
   invitations
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm"; // Added sql import
+import { eq, and, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -172,10 +172,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomers(filters?: { status?: string; region?: string; search?: string }): Promise<Customer[]> {
-    let query = db
-      .select()
-      .from(customers)
-      .orderBy(desc(customers.updatedAt));
+    let query = db.select().from(customers);
 
     const conditions = [];
 
@@ -187,18 +184,18 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(customers.region, filters.region));
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
     if (filters?.search && filters.search.trim()) {
       const search = `%${filters.search.toLowerCase()}%`;
-      query = query.where(
+      conditions.push(
         sql`lower(${customers.firstName}) ILIKE ${search} OR lower(${customers.lastName}) ILIKE ${search} OR lower(${customers.email}) ILIKE ${search} OR lower(${customers.company}) ILIKE ${search}`
       );
     }
 
-    const results = await query;
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+
+    const results = await query.orderBy(desc(customers.updatedAt));
     return results;
   }
 
