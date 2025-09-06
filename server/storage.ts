@@ -7,7 +7,7 @@ import {
   type InsertTeamActivity,
   type User,
   type InsertUser,
-  type Invitation,
+  type Invitation, 
   type InsertInvitation,
   customers,
   customerNotes,
@@ -26,24 +26,24 @@ export interface IStorage {
   createCustomer(customer: InsertCustomer): Promise<Customer>;
   updateCustomer(id: string, updates: Partial<InsertCustomer>): Promise<Customer | undefined>;
   deleteCustomer(id: string): Promise<boolean>;
-
+  
   // Customer notes operations
   getCustomerNotes(customerId: string): Promise<CustomerNote[]>;
   createCustomerNote(note: InsertCustomerNote): Promise<CustomerNote>;
-
+  
   // Team activity operations
   getTeamActivity(limit?: number): Promise<TeamActivity[]>;
   createTeamActivity(activity: InsertTeamActivity): Promise<TeamActivity>;
-
+  
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-
+  createUser(insertUser: InsertUser): Promise<User>;
+  
   // Invitation operations
   getInvitations(): Promise<Invitation[]>;
   createInvitation(invitation: InsertInvitation): Promise<Invitation>;
-
+  
   // Analytics
   getCustomerAnalytics(): Promise<{
     totalCustomers: number;
@@ -175,27 +175,27 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(customers);
 
     const conditions = [];
-
+    
     if (filters?.status && filters.status !== 'all') {
       conditions.push(eq(customers.status, filters.status));
     }
-
+    
     if (filters?.region && filters.region !== 'all') {
       conditions.push(eq(customers.region, filters.region));
     }
-
+    
     if (filters?.search && filters.search.trim()) {
       const search = `%${filters.search.toLowerCase()}%`;
       conditions.push(
         sql`lower(${customers.firstName}) ILIKE ${search} OR lower(${customers.lastName}) ILIKE ${search} OR lower(${customers.email}) ILIKE ${search} OR lower(${customers.company}) ILIKE ${search}`
       );
     }
-
+    
     if (conditions.length > 0) {
       query = query.where(and(...conditions));
     }
-
-    const results = await (query as any).orderBy(desc(customers.updatedAt)); // Type assertion to bypass TS2740
+    
+    const results = await (query as any).orderBy(desc(customers.updatedAt)); // Workaround for TS2740
     return results;
   }
 
@@ -206,14 +206,14 @@ export class DatabaseStorage implements IStorage {
 
   async createCustomer(insertCustomer: InsertCustomer): Promise<Customer> {
     const [customer] = await db.insert(customers).values(insertCustomer).returning();
-
+    
     await this.createTeamActivity({
       action: 'created customer',
       userName: 'System',
       customerName: `${customer.firstName} ${customer.lastName}`,
       customerId: customer.id,
     });
-
+    
     return customer;
   }
 
@@ -223,32 +223,32 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(customers.id, id))
       .returning();
-
+    
     if (!updated) return undefined;
-
+    
     await this.createTeamActivity({
       action: 'updated customer',
       userName: updates.lastContactBy || 'System',
       customerName: `${updated.firstName} ${updated.lastName}`,
       customerId: updated.id,
     });
-
+    
     return updated;
   }
 
   async deleteCustomer(id: string): Promise<boolean> {
     const customer = await this.getCustomer(id);
     if (!customer) return false;
-
+    
     await db.delete(customerNotes).where(eq(customerNotes.customerId, id));
     await db.delete(customers).where(eq(customers.id, id));
-
+    
     await this.createTeamActivity({
       action: 'deleted customer',
       userName: 'System',
       customerName: `${customer.firstName} ${customer.lastName}`,
     });
-
+    
     return true;
   }
 
@@ -262,7 +262,7 @@ export class DatabaseStorage implements IStorage {
 
   async createCustomerNote(insertNote: InsertCustomerNote): Promise<CustomerNote> {
     const [note] = await db.insert(customerNotes).values(insertNote).returning();
-
+    
     const customer = await this.getCustomer(note.customerId);
     await this.createTeamActivity({
       action: 'added a note to',
@@ -270,7 +270,7 @@ export class DatabaseStorage implements IStorage {
       customerName: customer ? `${customer.firstName} ${customer.lastName}` : 'Unknown Customer',
       customerId: note.customerId,
     });
-
+    
     return note;
   }
 
@@ -296,7 +296,7 @@ export class DatabaseStorage implements IStorage {
     const [totalCustomers] = await db.select({ count: sql`count(*)` }).from(customers);
     const [activeCustomers] = await db.select({ count: sql`count(*)` }).from(customers).where(eq(customers.status, 'active'));
     const [totalNotes] = await db.select({ count: sql`count(*)` }).from(customerNotes);
-
+    
     return {
       totalCustomers: Number(totalCustomers.count),
       activeCustomers: Number(activeCustomers.count),
@@ -315,8 +315,9 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+  async createUser(insertUser: Omit<InsertUser, "id">): Promise<User> {
+    const userWithId = { ...insertUser, id: randomUUID() }; // Workaround for TS2769
+    const [user] = await db.insert(users).values(userWithId).returning();
     return user;
   }
 
