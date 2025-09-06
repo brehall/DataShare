@@ -16,7 +16,7 @@ import {
   invitations
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, SQL } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -38,7 +38,7 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(insertUser: InsertUser): Promise<User>;
+  createUser(insertUser: Omit<InsertUser, "id">): Promise<User>;
   
   // Invitation operations
   getInvitations(): Promise<Invitation[]>;
@@ -174,7 +174,7 @@ export class DatabaseStorage implements IStorage {
   async getCustomers(filters?: { status?: string; region?: string; search?: string }): Promise<Customer[]> {
     let query = db.select().from(customers);
 
-    const conditions = [];
+    const conditions: (SQL | undefined)[] = [];
     
     if (filters?.status && filters.status !== 'all') {
       conditions.push(eq(customers.status, filters.status));
@@ -195,7 +195,7 @@ export class DatabaseStorage implements IStorage {
       query = query.where(and(...conditions));
     }
     
-    const results = await (query as any).orderBy(desc(customers.updatedAt)); // Workaround for TS2740
+    const results = await query.orderBy(desc(customers.updatedAt));
     return results;
   }
 
@@ -316,7 +316,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: Omit<InsertUser, "id">): Promise<User> {
-    const userWithId = { ...insertUser, id: randomUUID() }; // Workaround for TS2769
+    const userWithId = { ...insertUser, id: randomUUID() };
     const [user] = await db.insert(users).values(userWithId).returning();
     return user;
   }
